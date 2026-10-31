@@ -42,6 +42,20 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       {/* noValidate: the server's plain-English messages are the single source of validation errors. */}
       <form action={formAction} className="space-y-4 rounded-2xl bg-white p-5 shadow-sm" noValidate>
         <h1 className="text-xl font-bold">{text.title}</h1>
+        {mode === "signup" && (
+          <label className="block space-y-1">
+            <span className="text-sm font-medium">Your name</span>
+            <input
+              name="name"
+              type="text"
+              autoComplete="given-name"
+              maxLength={50}
+              defaultValue={state?.name}
+              required
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-base"
+            />
+          </label>
+        )}
         <label className="block space-y-1">
           <span className="text-sm font-medium">Email</span>
           <input

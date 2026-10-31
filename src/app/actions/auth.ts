@@ -8,7 +8,7 @@ import { createSession, deleteSession } from "@/lib/auth/session";
 import { buildSampleData } from "@/lib/sample-data";
 import { firstErrorMessage, loginSchema, signupSchema } from "@/lib/validation";
 
-export type AuthFormState = { error: string; email: string } | undefined;
+export type AuthFormState = { error: string; email: string; name?: string } | undefined;
 
 function field(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);
@@ -17,28 +17,33 @@ function field(formData: FormData, name: string): string | undefined {
 
 export async function signup(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const parsed = signupSchema.safeParse({
+    name: field(formData, "name"),
     email: field(formData, "email"),
     password: field(formData, "password"),
   });
   if (!parsed.success) {
-    return { error: firstErrorMessage(parsed.error), email: field(formData, "email") ?? "" };
+    return {
+      error: firstErrorMessage(parsed.error),
+      email: field(formData, "email") ?? "",
+      name: field(formData, "name") ?? "",
+    };
   }
-  const { email, password } = parsed.data;
+  const { name, email, password } = parsed.data;
 
   try {
     const passwordHash = await hashPassword(password);
     // Nested create runs in one transaction: the user and all sample data, or nothing.
     const user = await prisma.user.create({
-      data: { email, passwordHash, ...buildSampleData(new Date()) },
+      data: { email, name, passwordHash, ...buildSampleData(new Date()) },
       select: { id: true },
     });
     await createSession(user.id);
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return { error: "An account with this email already exists. Try logging in instead.", email };
+      return { error: "An account with this email already exists. Try logging in instead.", email, name };
     }
     console.error("signup failed", err);
-    return { error: "Something went wrong creating your account. Please try again.", email };
+    return { error: "Something went wrong creating your account. Please try again.", email, name };
   }
 
   // redirect() throws, so it must stay outside the try block.

@@ -10,6 +10,7 @@ import {
   goalSchema,
   incomeSchema,
   itemIdSchema,
+  nameSchema,
   nextSalarySchema,
   profileSchema,
 } from "@/lib/validation";
@@ -62,6 +63,15 @@ export function updateProfile(input: unknown): Ok<{ saved: true }> {
       update: parsed.data,
       create: { userId, ...parsed.data, currentBalance: 0 },
     });
+    return { ok: true, data: { saved: true } };
+  });
+}
+
+export function updateName(input: unknown): Ok<{ saved: true }> {
+  return asUser(async (userId) => {
+    const parsed = nameSchema.safeParse(input ?? {});
+    if (!parsed.success) return fail(400, firstErrorMessage(parsed.error));
+    await prisma.user.update({ where: { id: userId }, data: { name: parsed.data.name } });
     return { ok: true, data: { saved: true } };
   });
 }

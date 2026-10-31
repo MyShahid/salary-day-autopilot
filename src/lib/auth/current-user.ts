@@ -2,7 +2,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "./session";
 
-export type CurrentUser = { id: string; email: string };
+export type CurrentUser = { id: string; email: string; name: string | null };
 
 /**
  * The logged-in user, or null. The user id comes only from the signed session
@@ -13,6 +13,6 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!userId) return null;
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true },
+    select: { id: true, email: true, name: true },
   });
 });

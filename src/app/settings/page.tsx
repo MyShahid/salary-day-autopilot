@@ -11,6 +11,7 @@ import {
   saveBillAction,
   saveGoalAction,
   saveIncomeAction,
+  saveNameAction,
   saveNextSalaryAction,
   saveProfileAction,
 } from "@/app/actions/settings";
@@ -183,6 +184,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           We filled in sample numbers. Change them to yours, especially the money in your account right now.
         </p>
       )}
+
+      <Section title="Your name">
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <ActionForm action={saveNameAction} version={user.name ?? ""}>
+            <Field label="Name" hint="Used to greet you on the home screen.">
+              <input
+                name="name"
+                type="text"
+                autoComplete="given-name"
+                maxLength={50}
+                defaultValue={user.name ?? ""}
+                className={inputClass}
+              />
+            </Field>
+          </ActionForm>
+        </div>
+      </Section>
 
       <Section title="Money in your account right now">
         <div className="rounded-xl bg-white p-4 shadow-sm">

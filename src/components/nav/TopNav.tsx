@@ -17,7 +17,15 @@ export async function TopNav() {
             </button>
           </form>
         </nav>
-        <p className="truncate px-3 pb-1 text-xs text-slate-500">{user.email}</p>
+        <p className="truncate px-3 pb-1 text-xs text-slate-500">
+          {user.name ? (
+            <>
+              <span className="font-semibold text-slate-800">{user.name}</span> · {user.email}
+            </>
+          ) : (
+            user.email
+          )}
+        </p>
       </div>
     </header>
   );

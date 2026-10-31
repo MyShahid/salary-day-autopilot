@@ -13,6 +13,7 @@ import {
   updateBill,
   updateGoal,
   updateIncome,
+  updateName,
   updateNextSalary,
   updateProfile,
 } from "@/lib/settings-service";
@@ -36,6 +37,10 @@ function done<T>(result: ServiceResult<T>): FormState {
 
 export async function saveProfileAction(_prev: FormState, formData: FormData): Promise<FormState> {
   return done(await updateProfile(fields(formData)));
+}
+
+export async function saveNameAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  return done(await updateName(fields(formData)));
 }
 
 export async function saveNextSalaryAction(_prev: FormState, formData: FormData): Promise<FormState> {

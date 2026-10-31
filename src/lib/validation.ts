@@ -13,7 +13,16 @@ const email = z
   .max(254, "That email address is too long.")
   .pipe(z.email("Please enter a valid email address."));
 
+const personName = z
+  .string({ error: "Please enter your name." })
+  .trim()
+  .min(1, "Please enter your name.")
+  .max(50, "Please keep your name under 50 characters.");
+
+export const nameSchema = z.object({ name: personName });
+
 export const signupSchema = z.object({
+  name: personName,
   email,
   password: z
     .string({ error: "Please enter a password." })

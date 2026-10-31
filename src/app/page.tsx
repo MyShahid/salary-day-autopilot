@@ -18,6 +18,12 @@ const STATUS_STYLE: Record<Plan["status"], string> = {
   short: "bg-red-700 text-white",
 };
 
+/** "Hi Arjun — you're okay this month"; just the headline when there's no name. */
+function greeting(name: string | null, headline: string): string {
+  const first = name?.trim();
+  return first ? `Hi ${first} — ${headline.charAt(0).toLowerCase()}${headline.slice(1)}` : headline;
+}
+
 export default async function HomePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -43,7 +49,7 @@ export default async function HomePage() {
     // Room at the bottom on phones for the pinned "Log something" button.
     <div className="space-y-5 pb-24 sm:pb-0">
       <section aria-label="This month" className={`rounded-2xl p-5 shadow-sm ${STATUS_STYLE[plan.status]}`}>
-        <h1 className="text-2xl leading-tight font-bold">{plan.headline}</h1>
+        <h1 className="text-2xl leading-tight font-bold">{greeting(user.name, plan.headline)}</h1>
         <p className="mt-4 text-sm font-semibold tracking-wide uppercase opacity-90">Safe to spend today</p>
         <p className="text-5xl leading-none font-extrabold tracking-tight tabular-nums">{formatRupees(plan.safeToSpendToday)}</p>
         <p className="mt-1 text-base">until salary on {fmtDate(plan.cycle.end)}</p>

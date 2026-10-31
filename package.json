@@ -10,7 +10,8 @@
     "test": "vitest run",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "demo:create": "tsx scripts/create-demo.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
@@ -28,6 +29,7 @@
     "@types/react-dom": "19.3.0",
     "prisma": "6.19.3",
     "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "5.0.5"
   }
