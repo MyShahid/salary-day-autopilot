@@ -49,7 +49,7 @@ export function buildNextSalaryPlan(input: PlanInput, today: Date | ISODate): Ne
     if (uncovered > 0) {
       const total = onDate.reduce((t, u) => t + u.amount, 0);
       const days = daysBetween(date, salaryDate);
-      const sentence = `${rs(total)} due on ${fmt(date)} but salary comes ${fmt(salaryDate)} — you'll be ${rs(uncovered)} short for ${days} day${days === 1 ? "" : "s"}.`;
+      const sentence = `${rs(total)} due on ${fmt(date)} but salary comes ${fmt(salaryDate)}. You'll be ${rs(uncovered)} short for ${days} day${days === 1 ? "" : "s"}.`;
       lateWarnings.push(sentence);
       leadDecisions.push({ kind: "shortfall", amount: uncovered, from: "this_cycle", to: "none", sentence });
     }

@@ -83,9 +83,9 @@ describe("Next salary plan", () => {
       expect(n).toMatchObject({ payDate: "2026-11-09", salaryDate: "2026-11-12", late: true, carryIn: 0 });
       expect(n.plan.decisions.filter((d) => d.from === "this_cycle").map((d) => d.sentence)).toEqual([
         "Pay Money sent home (₹5,000, due 10 Nov) from this month's spending money and emergency buffer, because your salary comes on 12 Nov.",
-        "₹6,000 due on 10 Nov but salary comes 12 Nov — you'll be ₹1,000 short for 2 days.",
+        "₹6,000 due on 10 Nov but salary comes 12 Nov. You'll be ₹1,000 short for 2 days.",
       ]);
-      expect(n.plan.warnings[0]).toBe("₹6,000 due on 10 Nov but salary comes 12 Nov — you'll be ₹1,000 short for 2 days.");
+      expect(n.plan.warnings[0]).toBe("₹6,000 due on 10 Nov but salary comes 12 Nov. You'll be ₹1,000 short for 2 days.");
       // Money sent home is already paid; the phone bill waits for the salary.
       expect(bucket(n.plan, "Money sent home")).toMatchObject({ target: 0, planned: 0 });
       expect(bucket(n.plan, "Phone and internet")).toMatchObject({ target: 1000, planned: 1000 });
@@ -106,7 +106,7 @@ describe("Next salary plan", () => {
     it("nothing spare this month -> the whole amount is short", () => {
       const input = withProfile({ currentBalance: 20000, balanceAsOf: "2026-10-31", nextSalaryDate: "2026-11-12" });
       const n = next(input, "2026-10-31");
-      expect(n.plan.warnings[0]).toBe("₹6,000 due on 10 Nov but salary comes 12 Nov — you'll be ₹6,000 short for 2 days.");
+      expect(n.plan.warnings[0]).toBe("₹6,000 due on 10 Nov but salary comes 12 Nov. You'll be ₹6,000 short for 2 days.");
     });
 
     it("a 'late' date on or before the normal pay date changes nothing", () => {

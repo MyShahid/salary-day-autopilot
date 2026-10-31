@@ -19,10 +19,16 @@ const STATUS_STYLE: Record<Plan["status"], string> = {
   short: "bg-red-700 text-white",
 };
 
-/** "Hi Arjun — you're okay this month"; just the headline when there's no name. */
-function greeting(name: string | null, headline: string): string {
+/**
+ * "Hi Arjun, you're okay this month" / "Hi Arjun, you're short by ₹4,142" /
+ * "Hi Arjun, it's tight this month: …". Just the headline when there's no name.
+ */
+function greeting(name: string | null, headline: string, status: Plan["status"]): string {
   const first = name?.trim();
-  return first ? `Hi ${first} — ${headline.charAt(0).toLowerCase()}${headline.slice(1)}` : headline;
+  if (!first) return headline;
+  const rest = `${headline.charAt(0).toLowerCase()}${headline.slice(1)}`;
+  const lead = status === "short" ? "you're " : status === "tight" ? "it's " : "";
+  return `Hi ${first}, ${lead}${rest}`;
 }
 
 export default async function HomePage() {
@@ -52,7 +58,7 @@ export default async function HomePage() {
     <DecisionHighlightProvider>
     <div className="space-y-5 pb-24 sm:pb-0">
       <section aria-label="This month" className={`rounded-2xl p-5 shadow-sm ${STATUS_STYLE[plan.status]}`}>
-        <h1 className="text-2xl leading-tight font-bold">{greeting(user.name, plan.headline)}</h1>
+        <h1 className="text-2xl leading-tight font-bold">{greeting(user.name, plan.headline, plan.status)}</h1>
         <p className="mt-4 text-sm font-semibold tracking-wide uppercase opacity-90">Safe to spend today</p>
         <p className="text-5xl leading-none font-extrabold tracking-tight tabular-nums">{formatRupees(plan.safeToSpendToday)}</p>
         <p className="mt-1 text-base">until salary on {fmtDate(plan.cycle.end)}</p>

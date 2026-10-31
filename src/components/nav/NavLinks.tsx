@@ -19,7 +19,7 @@ export function NavLinks() {
             key={l.href}
             href={l.href}
             aria-current={active ? "page" : undefined}
-            className={`shrink-0 rounded-md px-2.5 py-2 whitespace-nowrap ${active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}
+            className={`shrink-0 rounded-md px-2 py-2 whitespace-nowrap ${active ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`}
           >
             {l.label}
           </Link>

@@ -12,7 +12,7 @@ export function NextSalaryCard({ next, today }: { next: NextSalaryPlan; today: s
     <section className="space-y-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div>
         <h2 className="text-lg font-semibold">
-          Next salary: {fmt(next.salaryDate)} — {formatRupees(next.expectedSalary)}
+          Next salary: {fmt(next.salaryDate)}, {formatRupees(next.expectedSalary)}
         </h2>
         {next.late && <p className="text-sm text-amber-800">Late: normally {fmt(next.payDate)}.</p>}
         {next.leaveCut > 0 && (
