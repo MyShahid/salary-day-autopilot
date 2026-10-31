@@ -1,0 +1,110 @@
+// All money fields are whole rupees stored as Int.
+// Day-of-month (1-31) and month (1-12) ranges are enforced by zod in the app,
+// not by the database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BillFrequency {
+  monthly
+  yearly
+}
+
+enum IncomeFrequency {
+  monthly
+  yearly
+  oneoff
+}
+
+enum EventType {
+  salary_received
+  card_spend
+  expense
+  income_received
+  bill_paid
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  profile Profile?
+  bills   Bill[]
+  incomes Income[]
+  goals   Goal[]
+  events  Event[]
+}
+
+model Profile {
+  userId         String @id
+  salaryAmount   Int
+  payDay         Int
+  currentBalance Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Bill {
+  id         String        @id @default(cuid())
+  userId     String
+  name       String
+  amount     Int
+  dueDay     Int
+  frequency  BillFrequency
+  dueMonth   Int? // only for yearly bills
+  priority   Int
+  isVariable Boolean       @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Income {
+  id          String          @id @default(cuid())
+  userId      String
+  name        String
+  amount      Int
+  expectedDay Int
+  frequency   IncomeFrequency
+  isReliable  Boolean         @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Goal {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  targetAmount Int
+  savedAmount  Int      @default(0)
+  deadline     DateTime @db.Date
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Event {
+  id        String    @id @default(cuid())
+  userId    String
+  type      EventType
+  amount    Int
+  note      String?
+  date      DateTime  @db.Date
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}

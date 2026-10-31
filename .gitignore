@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# env files (secrets) - only .env.example is committed
+.env
+.env*.local
+.env.development
+.env.production
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# vercel
+.vercel
+
+# misc
+.DS_Store
+npm-debug.log*
