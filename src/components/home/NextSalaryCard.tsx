@@ -1,6 +1,7 @@
 import { formatRupees } from "@/lib/engine/format";
 import type { NextSalaryPlan } from "@/lib/engine/types";
 import { formatDayDate } from "@/lib/format-ui";
+import { DecisionList } from "@/components/plan/DecisionList";
 
 export function NextSalaryCard({ next, today }: { next: NextSalaryPlan; today: string }) {
   const { plan } = next;
@@ -8,7 +9,7 @@ export function NextSalaryCard({ next, today }: { next: NextSalaryPlan; today: s
   const where = plan.buckets.filter((b) => b.planned > 0);
 
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="space-y-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div>
         <h2 className="text-lg font-semibold">
           Next salary: {fmt(next.salaryDate)} — {formatRupees(next.expectedSalary)}
@@ -58,13 +59,11 @@ export function NextSalaryCard({ next, today }: { next: NextSalaryPlan; today: s
         </p>
       ))}
 
-      <details className="text-sm">
-        <summary className="cursor-pointer font-medium">What I'll do and why ({plan.decisions.length} steps)</summary>
-        <ol className="mt-2 space-y-2 text-slate-700">
-          {plan.decisions.map((d, i) => (
-            <li key={i}>{d.sentence}</li>
-          ))}
-        </ol>
+      <details className="-mx-4 -mb-4 border-t border-slate-100 text-sm">
+        <summary className="cursor-pointer px-4 py-3 font-semibold">What I'll do and why ({plan.decisions.length})</summary>
+        <div className="border-t border-slate-100">
+          <DecisionList decisions={plan.decisions.map((d) => ({ kind: d.kind, sentence: d.sentence }))} />
+        </div>
       </details>
     </section>
   );

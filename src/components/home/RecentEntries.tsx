@@ -22,9 +22,7 @@ export function RecentEntries({ rows }: { rows: EntryRow[] }) {
 
   if (rows.length === 0) {
     return (
-      <p className="rounded-xl bg-white p-4 text-sm text-slate-600 shadow-sm">
-        Nothing logged yet. Use “Log something” when money comes in or goes out.
-      </p>
+      <p className="rounded-xl bg-white p-4 text-sm text-slate-600 shadow-sm">Nothing logged yet.</p>
     );
   }
 

@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { addEvent, deleteEvent } from "@/lib/plan-service";
+import { addEvent, deleteEvent, getDecisionSentences } from "@/lib/plan-service";
 
-export type LogEventState = { error: string } | { savedAt: number } | undefined;
+/** `details`: the plan's decision sentences that are new because of this entry. */
+export type LogEventState = { error: string } | { savedAt: number; details: string[] } | undefined;
 export type UndoState = { error: string } | { savedAt: number } | undefined;
 
 function field(formData: FormData, name: string): string | undefined {
@@ -12,6 +13,7 @@ function field(formData: FormData, name: string): string | undefined {
 }
 
 export async function logEventAction(_prev: LogEventState, formData: FormData): Promise<LogEventState> {
+  const before = new Set(await getDecisionSentences());
   const result = await addEvent(
     field(formData, "type"),
     field(formData, "amount"),
@@ -20,8 +22,10 @@ export async function logEventAction(_prev: LogEventState, formData: FormData): 
     field(formData, "note"),
   );
   if (!result.ok) return { error: result.error };
+  // The engine's own sentences that this entry added or changed; no new maths here.
+  const details = (await getDecisionSentences()).filter((s) => !before.has(s));
   revalidatePath("/");
-  return { savedAt: Date.now() };
+  return { savedAt: Date.now(), details };
 }
 
 export async function undoEventAction(_prev: UndoState, formData: FormData): Promise<UndoState> {

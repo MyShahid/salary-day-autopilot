@@ -8,6 +8,9 @@ function nextYearIndia(now: Date): number {
   return Number(year) + 1;
 }
 
+/** Balance given to new sign-ups (as of the moment they sign up). Not used by the demo account or tests. */
+export const NEW_SIGNUP_BALANCE = 26000;
+
 export function buildSampleData(now: Date) {
   return {
     profile: {

@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { LogEventForm } from "@/components/home/LogEventForm";
 import { NextSalaryCard } from "@/components/home/NextSalaryCard";
 import { RecentEntries } from "@/components/home/RecentEntries";
+import { DecisionDisclosure, DecisionHighlightProvider } from "@/components/plan/DecisionList";
 
 // Solid colours with white or near-black text, so the status reads at a glance in sunlight.
 const STATUS_STYLE: Record<Plan["status"], string> = {
@@ -47,6 +48,8 @@ export default async function HomePage() {
 
   return (
     // Room at the bottom on phones for the pinned "Log something" button.
+    // The provider lets a new entry highlight the decisions it changed.
+    <DecisionHighlightProvider>
     <div className="space-y-5 pb-24 sm:pb-0">
       <section aria-label="This month" className={`rounded-2xl p-5 shadow-sm ${STATUS_STYLE[plan.status]}`}>
         <h1 className="text-2xl leading-tight font-bold">{greeting(user.name, plan.headline)}</h1>
@@ -140,14 +143,11 @@ export default async function HomePage() {
         />
       </section>
 
-      <details className="rounded-xl bg-white shadow-sm">
-        <summary className="cursor-pointer p-4 text-sm font-semibold">What I did and why ({plan.decisions.length})</summary>
-        <ol className="space-y-2 border-t border-slate-100 p-4 text-sm text-slate-700">
-          {[...plan.decisions].reverse().map((d, i) => (
-            <li key={i}>{d.sentence}</li>
-          ))}
-        </ol>
-      </details>
+      <DecisionDisclosure
+        title="How I planned your money"
+        decisions={plan.decisions.map((d) => ({ kind: d.kind, sentence: d.sentence }))}
+        newestFirst
+      />
 
       {next ? (
         <NextSalaryCard next={next} today={today} />
@@ -155,5 +155,6 @@ export default async function HomePage() {
         <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">{nextError}</p>
       )}
     </div>
+    </DecisionHighlightProvider>
   );
 }

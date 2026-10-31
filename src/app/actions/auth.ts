@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, needsRehash, verifyPassword } from "@/lib/auth/password";
 import { createSession, deleteSession } from "@/lib/auth/session";
-import { buildSampleData } from "@/lib/sample-data";
+import { buildSampleData, NEW_SIGNUP_BALANCE } from "@/lib/sample-data";
 import { firstErrorMessage, loginSchema, signupSchema } from "@/lib/validation";
 
 export type AuthFormState = { error: string; email: string; name?: string } | undefined;
@@ -33,8 +33,17 @@ export async function signup(_prev: AuthFormState, formData: FormData): Promise<
   try {
     const passwordHash = await hashPassword(password);
     // Nested create runs in one transaction: the user and all sample data, or nothing.
+    const now = new Date();
+    const sample = buildSampleData(now);
     const user = await prisma.user.create({
-      data: { email, name, passwordHash, ...buildSampleData(new Date()) },
+      data: {
+        email,
+        name,
+        passwordHash,
+        ...sample,
+        // New accounts start with a sample balance, true as of sign-up.
+        profile: { create: { ...sample.profile.create, currentBalance: NEW_SIGNUP_BALANCE, balanceAsOf: now } },
+      },
       select: { id: true },
     });
     await createSession(user.id);

@@ -18,6 +18,7 @@ import {
 import { ActionForm } from "@/components/settings/ActionForm";
 import { BillFrequencyFields } from "@/components/settings/BillFrequencyFields";
 import { DeleteForm, DeleteProvider } from "@/components/settings/DeleteForm";
+import { ShowMore } from "@/components/settings/ShowMore";
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -199,6 +200,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               />
             </Field>
           </ActionForm>
+          <p className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-600">
+            Logged in as <span className="font-medium break-all text-slate-900">{user.email}</span>
+          </p>
         </div>
       </Section>
 
@@ -274,6 +278,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {bills.length === 0 && (
           <p className="text-sm text-slate-600">No bills yet. Add rent, EMIs and other regular payments below.</p>
         )}
+        <ShowMore>
         {bills.map((b) => (
           <Item
             key={b.id}
@@ -296,6 +301,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <DeleteForm kind="bill" id={b.id} name={b.name} />
           </Item>
         ))}
+        </ShowMore>
         <AddItem label="Add a bill">
           <ActionForm action={saveBillAction} submitLabel="Add bill" successMessage="Added. Your home screen is updated." resetOnSave>
             <BillFields />
@@ -307,6 +313,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {incomes.length === 0 && (
           <p className="text-sm text-slate-600">No other income yet. Add money you get besides salary, like a roommate's share.</p>
         )}
+        <ShowMore>
         {incomes.map((i) => (
           <Item
             key={i.id}
@@ -327,6 +334,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <DeleteForm kind="income" id={i.id} name={i.name} />
           </Item>
         ))}
+        </ShowMore>
         <AddItem label="Add income">
           <ActionForm action={saveIncomeAction} submitLabel="Add income" successMessage="Added. Your home screen is updated." resetOnSave>
             <IncomeFields />
@@ -338,6 +346,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         {goals.length === 0 && (
           <p className="text-sm text-slate-600">No goals yet. Add something you're saving for, with a deadline.</p>
         )}
+        <ShowMore>
         {goals.map((g) => (
           <Item
             key={g.id}
@@ -356,6 +365,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <DeleteForm kind="goal" id={g.id} name={g.name} />
           </Item>
         ))}
+        </ShowMore>
         <AddItem label="Add a goal">
           <ActionForm action={saveGoalAction} submitLabel="Add goal" successMessage="Added. Your home screen is updated." resetOnSave>
             <GoalFields today={today} />

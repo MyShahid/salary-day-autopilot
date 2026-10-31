@@ -1,16 +1,20 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { BoldRupees } from "@/components/plan/BoldRupees";
 
 type Kind = "success" | "error";
 interface Toast {
   id: number;
   kind: Kind;
   message: string;
+  /** Extra lines under the message, e.g. the plan's decisions for a new entry. */
+  details?: string[];
 }
 
 const AUTO_CLOSE_MS = 5000;
-const ToastContext = createContext<(message: string, kind?: Kind) => void>(() => {});
+type Notify = (message: string, kind?: Kind, details?: string[]) => void;
+const ToastContext = createContext<Notify>(() => {});
 
 /** Shows a toast. Success toasts close after 5 seconds; errors stay until closed. */
 export const useToast = () => useContext(ToastContext);
@@ -21,12 +25,15 @@ export const useToast = () => useContext(ToastContext);
  * Call it in a component that stays on screen after the action (not in a row the
  * action removes), or the toast never fires.
  */
-export function useResultToast(state: { error: string } | { savedAt: number } | undefined, successMessage: string) {
+export function useResultToast(
+  state: { error: string } | { savedAt: number; details?: string[] } | undefined,
+  successMessage: string,
+) {
   const notify = useToast();
   useEffect(() => {
     if (!state) return;
     if ("error" in state) notify(state.error, "error");
-    else notify(successMessage, "success");
+    else notify(successMessage, "success", state.details);
   }, [state, notify, successMessage]);
 }
 
@@ -47,7 +54,19 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: number) => 
       }`}
     >
       <div className="flex items-start gap-3 px-4 py-3">
-        <p className="min-w-0 flex-1 text-sm font-medium break-words">{toast.message}</p>
+        <div className="min-w-0 flex-1 text-sm break-words">
+          <p className="font-medium">{toast.message}</p>
+          {toast.details && toast.details.length > 0 && (
+            <ul className="mt-1 space-y-1">
+              {toast.details.slice(0, 4).map((d) => (
+                <li key={d}>
+                  <BoldRupees text={d} />
+                </li>
+              ))}
+              {toast.details.length > 4 && <li>…and {toast.details.length - 4} more under "How I planned your money".</li>}
+            </ul>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => onClose(toast.id)}
@@ -72,10 +91,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
 
-  const notify = useCallback((message: string, kind: Kind = "success") => {
+  const notify = useCallback<Notify>((message, kind = "success", details) => {
     const id = nextId.current++;
     // Keep at most three on screen.
-    setToasts((list) => [...list.slice(-2), { id, kind, message }]);
+    setToasts((list) => [...list.slice(-2), { id, kind, message, details }]);
   }, []);
   const close = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), []);
 

@@ -36,25 +36,46 @@ export interface HomeData {
   nextError: string | null;
 }
 
+/** Everything the engine needs for one user, straight from the database. */
+async function loadPlanInput(userId: string, today: ISODate) {
+  const where = { userId };
+  const [profile, bills, incomes, goals, events] = await Promise.all([
+    prisma.profile.findUnique({ where }),
+    prisma.bill.findMany({ where, orderBy: { priority: "asc" } }),
+    prisma.income.findMany({ where, orderBy: { name: "asc" } }),
+    prisma.goal.findMany({ where, orderBy: { deadline: "asc" } }),
+    prisma.event.findMany({
+      where: { userId, date: { gte: new Date(`${addDays(today, -EVENT_LOOKBACK_DAYS)}T00:00:00Z`) } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+  return { profile, bills, incomes, goals, events };
+}
+
+/**
+ * This month's decision sentences for the logged-in user, or [] if there's no plan.
+ * Used to show which decisions a new entry changed.
+ */
+export async function getDecisionSentences(): Promise<string[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+  try {
+    const today = todayInIndia();
+    const result = safeBuildPlan(await loadPlanInput(user.id, today), today);
+    return result.ok ? result.plan.decisions.map((d) => d.sentence) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getPlanForUser(): Promise<ServiceResult<HomeData>> {
   const user = await getCurrentUser();
   if (!user) return unauthorized;
   const today = todayInIndia();
 
   try {
-    const where = { userId: user.id };
-    const [profile, bills, incomes, goals, events] = await Promise.all([
-      prisma.profile.findUnique({ where }),
-      prisma.bill.findMany({ where, orderBy: { priority: "asc" } }),
-      prisma.income.findMany({ where, orderBy: { name: "asc" } }),
-      prisma.goal.findMany({ where, orderBy: { deadline: "asc" } }),
-      prisma.event.findMany({
-        where: { userId: user.id, date: { gte: new Date(`${addDays(today, -EVENT_LOOKBACK_DAYS)}T00:00:00Z`) } },
-        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
-      }),
-    ]);
-
-    const input = { profile, bills, incomes, goals, events };
+    const input = await loadPlanInput(user.id, today);
+    const { bills, incomes, events } = input;
     const result = safeBuildPlan(input, today);
     if (!result.ok) return fail(500, result.error);
     // The next salary card is extra: if it can't be worked out, the rest of the page still shows.

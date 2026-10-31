@@ -5,6 +5,7 @@ import { logEventAction, type LogEventState } from "@/app/actions/events";
 import type { EventType } from "@/lib/engine/types";
 import { EVENT_LABELS, EVENT_TYPES, OTHER_INCOME } from "@/lib/events";
 import { useResultToast } from "@/components/toast/ToastProvider";
+import { useShowDecisions } from "@/components/plan/DecisionList";
 
 const input = "w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-base";
 
@@ -24,12 +25,14 @@ export function LogEventForm({
   useResultToast(state, "Logged. Your home screen is updated.");
   const formRef = useRef<HTMLFormElement>(null);
 
-  const savedAt = state && "savedAt" in state ? state.savedAt : undefined;
+  const showDecisions = useShowDecisions();
+  const saved = state && "savedAt" in state ? state : undefined;
   useEffect(() => {
-    if (savedAt === undefined) return;
+    if (!saved) return;
     formRef.current?.reset();
     setOpen(false);
-  }, [savedAt]);
+    showDecisions(saved.details);
+  }, [saved, showDecisions]);
 
   useEffect(() => {
     if (!open) return;
