@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { addEvent, deleteEvent } from "@/lib/plan-service";
 
 export type LogEventState = { error: string } | { savedAt: number } | undefined;
-export type UndoState = { error: string } | undefined;
+export type UndoState = { error: string } | { savedAt: number } | undefined;
 
 function field(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);
@@ -28,5 +28,5 @@ export async function undoEventAction(_prev: UndoState, formData: FormData): Pro
   const result = await deleteEvent(field(formData, "id"));
   if (!result.ok) return { error: result.error };
   revalidatePath("/");
-  return undefined;
+  return { savedAt: Date.now() };
 }

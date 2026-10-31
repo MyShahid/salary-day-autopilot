@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Bill, Goal, Income } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -17,7 +16,7 @@ import {
 } from "@/app/actions/settings";
 import { ActionForm } from "@/components/settings/ActionForm";
 import { BillFrequencyFields } from "@/components/settings/BillFrequencyFields";
-import { DeleteForm } from "@/components/settings/DeleteForm";
+import { DeleteForm, DeleteProvider } from "@/components/settings/DeleteForm";
 
 const inputClass = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -76,7 +75,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /** One saved item: a summary line, with edit form and delete inside a disclosure. */
 function Item({ summary, children }: { summary: React.ReactNode; children: React.ReactNode }) {
   return (
-    <details className="rounded-lg bg-white shadow-sm">
+    <details className="rounded-xl bg-white shadow-sm">
       <summary className="cursor-pointer list-none p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 text-sm">{summary}</div>
@@ -90,7 +89,7 @@ function Item({ summary, children }: { summary: React.ReactNode; children: React
 
 function AddItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <details className="rounded-lg border border-dashed border-slate-300 bg-white">
+    <details className="rounded-xl border border-dashed border-slate-300 bg-white">
       <summary className="cursor-pointer p-3 text-sm font-medium">+ {label}</summary>
       <div className="border-t border-slate-100 p-3">{children}</div>
     </details>
@@ -172,31 +171,34 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const today = todayInIndia();
   const fmt = (d: Date) => formatDayDate(toIndiaDate(d) ?? today, today);
 
+  const asOf = profile ? `as of ${fmt(profile.balanceAsOf)}` : undefined;
+
   return (
+    <DeleteProvider>
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">My details</h1>
-        <Link href="/" className="text-sm font-medium underline">
-          Back to home
-        </Link>
-      </div>
+      <h1 className="text-2xl font-bold">My details</h1>
 
       {welcome && (
-        <p role="status" className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+        <p role="status" className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950">
           We filled in sample numbers. Change them to yours, especially the money in your account right now.
         </p>
       )}
 
       <Section title="Money in your account right now">
-        <div className="rounded-lg bg-white p-3 shadow-sm">
-          <ActionForm action={saveBalanceAction} submitLabel="Save balance">
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <ActionForm
+            action={saveBalanceAction}
+            submitLabel="Save balance"
+            savedNote={asOf}
+            version={`${profile?.currentBalance}-${profile?.balanceAsOf.toISOString()}`}
+          >
             <Money
               name="currentBalance"
               label="Amount (₹)"
               defaultValue={profile?.currentBalance ?? 0}
               hint={
-                profile
-                  ? `Last updated ${fmt(profile.balanceAsOf)}. Saving sets it to right now: bills due before today count as paid.`
+                asOf
+                  ? `Saved ${asOf}. Saving sets it to right now: bills due before today count as paid.`
                   : "Saving sets it to right now."
               }
             />
@@ -205,8 +207,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section title="Salary">
-        <div className="rounded-lg bg-white p-3 shadow-sm">
-          <ActionForm action={saveProfileAction}>
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <ActionForm action={saveProfileAction} version={`${profile?.salaryAmount}-${profile?.payDay}`}>
             <Money name="salaryAmount" label="Monthly salary (₹)" defaultValue={profile?.salaryAmount ?? 0} />
             <Day name="payDay" label="Pay day" defaultValue={profile?.payDay ?? 1} />
           </ActionForm>
@@ -214,8 +216,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section title="Next salary">
-        <div className="rounded-lg bg-white p-3 shadow-sm">
-          <ActionForm action={saveNextSalaryAction}>
+        <div className="rounded-xl bg-white p-4 shadow-sm">
+          <ActionForm
+            action={saveNextSalaryAction}
+            version={`${profile?.unpaidLeaveDays}-${profile?.nextSalaryDate?.toISOString() ?? ""}`}
+          >
             <Field
               label="Unpaid leave days this month"
               hint="Each day takes 1/30 of your salary off the next payment. Leave at 0 if you had none."
@@ -248,7 +253,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       </Section>
 
       <Section title="Bills">
-        {bills.length === 0 && <p className="text-sm text-slate-600">No bills yet.</p>}
+        {bills.length === 0 && (
+          <p className="text-sm text-slate-600">No bills yet. Add rent, EMIs and other regular payments below.</p>
+        )}
         {bills.map((b) => (
           <Item
             key={b.id}
@@ -265,21 +272,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </>
             }
           >
-            <ActionForm action={saveBillAction}>
+            <ActionForm action={saveBillAction} version={JSON.stringify(b)}>
               <BillFields bill={b} />
             </ActionForm>
             <DeleteForm kind="bill" id={b.id} name={b.name} />
           </Item>
         ))}
         <AddItem label="Add a bill">
-          <ActionForm action={saveBillAction} submitLabel="Add bill" resetOnSave>
+          <ActionForm action={saveBillAction} submitLabel="Add bill" successMessage="Added. Your home screen is updated." resetOnSave>
             <BillFields />
           </ActionForm>
         </AddItem>
       </Section>
 
       <Section title="Other income">
-        {incomes.length === 0 && <p className="text-sm text-slate-600">No other income yet.</p>}
+        {incomes.length === 0 && (
+          <p className="text-sm text-slate-600">No other income yet. Add money you get besides salary, like a roommate's share.</p>
+        )}
         {incomes.map((i) => (
           <Item
             key={i.id}
@@ -294,21 +303,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </>
             }
           >
-            <ActionForm action={saveIncomeAction}>
+            <ActionForm action={saveIncomeAction} version={JSON.stringify(i)}>
               <IncomeFields income={i} />
             </ActionForm>
             <DeleteForm kind="income" id={i.id} name={i.name} />
           </Item>
         ))}
         <AddItem label="Add income">
-          <ActionForm action={saveIncomeAction} submitLabel="Add income" resetOnSave>
+          <ActionForm action={saveIncomeAction} submitLabel="Add income" successMessage="Added. Your home screen is updated." resetOnSave>
             <IncomeFields />
           </ActionForm>
         </AddItem>
       </Section>
 
       <Section title="Goals">
-        {goals.length === 0 && <p className="text-sm text-slate-600">No goals yet.</p>}
+        {goals.length === 0 && (
+          <p className="text-sm text-slate-600">No goals yet. Add something you're saving for, with a deadline.</p>
+        )}
         {goals.map((g) => (
           <Item
             key={g.id}
@@ -321,18 +332,19 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               </>
             }
           >
-            <ActionForm action={saveGoalAction}>
+            <ActionForm action={saveGoalAction} version={JSON.stringify(g)}>
               <GoalFields goal={g} today={today} />
             </ActionForm>
             <DeleteForm kind="goal" id={g.id} name={g.name} />
           </Item>
         ))}
         <AddItem label="Add a goal">
-          <ActionForm action={saveGoalAction} submitLabel="Add goal" resetOnSave>
+          <ActionForm action={saveGoalAction} submitLabel="Add goal" successMessage="Added. Your home screen is updated." resetOnSave>
             <GoalFields today={today} />
           </ActionForm>
         </AddItem>
       </Section>
     </div>
+    </DeleteProvider>
   );
 }

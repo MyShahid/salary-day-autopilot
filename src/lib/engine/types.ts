@@ -82,8 +82,11 @@ export interface PlanInput {
   settings?: EngineSettings;
 }
 
-/** "carry" is last month's shortfall, paid first from the next salary. */
-export type BucketKind = "carry" | BillKind | "buffer" | "goal" | "spending";
+/**
+ * "carry" is last month's shortfall, paid first from the next salary.
+ * "hold" is spending money kept back for bills due before a late salary.
+ */
+export type BucketKind = "carry" | BillKind | "buffer" | "goal" | "hold" | "spending";
 
 export interface Bucket {
   id: string;

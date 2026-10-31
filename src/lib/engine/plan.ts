@@ -30,7 +30,7 @@ export class EngineInputError extends Error {
 }
 
 // Funding order, top to bottom. Shortages are cut from the bottom up.
-const KIND_ORDER: readonly BucketKind[] = ["carry", "rent", "emi", "bill", "card", "yearly", "living", "buffer", "goal", "spending"];
+const KIND_ORDER: readonly BucketKind[] = ["carry", "rent", "emi", "bill", "card", "yearly", "living", "buffer", "goal", "hold", "spending"];
 const NEED_KINDS: ReadonlySet<BucketKind> = new Set(["carry", "rent", "emi", "bill", "card", "yearly", "living"]);
 
 interface Work extends Bucket {
@@ -86,11 +86,107 @@ export interface NextCycleOptions {
   leadDecisions: Decision[];
 }
 
-export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
-  return planCycle(input, today);
+/** Bills due after this cycle ends but before a late salary arrives, held back from this cycle's spending money. */
+export interface LateSalaryHold {
+  amount: number;
+  salaryDate: ISODate;
+  bills: UpcomingBill[];
 }
 
-export function planCycle(input: PlanInput, today: Date | ISODate, next?: NextCycleOptions): Plan {
+export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
+  const plan = planCycle(input, today);
+  // A late next salary means some of next cycle's bills fall on this cycle's money.
+  const setup = prepareNextCycle(input, plan);
+  const early = billsBeforeLateSalary(setup);
+  const amount = early.reduce((t, u) => t + u.amount, 0);
+  if (amount === 0) return plan;
+  return planCycle(input, today, undefined, { amount, salaryDate: setup.salaryDate, bills: early });
+}
+
+export interface NextCycleSetup {
+  payDate: ISODate;
+  salaryDate: ISODate;
+  late: boolean;
+  warnings: string[];
+  fullSalary: number;
+  leaveDays: number;
+  leaveCut: number;
+  leave: { days: number; cut: number } | null;
+  /** The coming cycle's input: no events, with this cycle's set-asides counted as saved. */
+  nextInput: PlanInput;
+  /** Plan the coming cycle from the day the salary lands. */
+  planToday: ISODate;
+}
+
+/** Everything needed to plan the coming cycle, derived from this cycle's plan. */
+export function prepareNextCycle(input: PlanInput, current: Plan): NextCycleSetup {
+  const clean = cleanInput(input);
+  const { profile, settings } = clean;
+  const fmt = (d: ISODate) => formatDate(d, current.today);
+
+  const payDate = current.cycle.end;
+  const nextCycle = payCycle(payDate, profile.payDay, settings.holidays);
+  const warnings: string[] = [...clean.nextSalaryWarnings];
+
+  // A late salary still belongs to the coming cycle, so it can't land on or after the following pay date.
+  let salaryDate = payDate;
+  if (profile.nextSalaryDate && profile.nextSalaryDate > payDate) {
+    salaryDate = profile.nextSalaryDate < nextCycle.end ? profile.nextSalaryDate : addDays(nextCycle.end, -1);
+    if (salaryDate !== profile.nextSalaryDate) {
+      warnings.push(`Your late salary date is after the following payday, so ${fmt(salaryDate)} is used.`);
+    }
+  }
+
+  const leaveDays = profile.unpaidLeaveDays;
+  const leaveCut = Math.min(profile.salaryAmount, Math.round((profile.salaryAmount * leaveDays) / 30));
+
+  // What this cycle puts aside is still there next cycle: yearly set-asides and goal money.
+  // Spending money is assumed spent; the buffer comes across as part of the carry-in.
+  const now = new Map(current.buckets.map((b) => [b.id, b]));
+  const bills = clean.bills.map((b) => {
+    const bucket = now.get(`bill:${b.id}`);
+    // Due this cycle means it gets paid this cycle, so next year's starts again from nothing.
+    const setAsideSoFar =
+      bucket?.kind === "yearly" ? (bucket.dueDates.length > 0 ? 0 : b.setAsideSoFar + bucket.target) : b.setAsideSoFar;
+    return { ...b, setAsideSoFar };
+  });
+  const goals = clean.goals.map((g) => ({ ...g, savedAmount: g.savedAmount + (now.get(`goal:${g.id}`)?.left ?? 0) }));
+
+  return {
+    payDate,
+    salaryDate,
+    late: salaryDate > payDate,
+    warnings,
+    fullSalary: profile.salaryAmount,
+    leaveDays,
+    leaveCut,
+    leave: leaveCut > 0 ? { days: leaveDays, cut: leaveCut } : null,
+    nextInput: {
+      profile: { salaryAmount: profile.salaryAmount, payDay: profile.payDay, currentBalance: 0 },
+      bills,
+      incomes: clean.incomes,
+      goals,
+      events: [],
+      settings,
+    },
+    planToday: salaryDate,
+  };
+}
+
+/** The coming cycle's bills due between the normal pay date and a late salary. Empty when the salary is on time. */
+export function billsBeforeLateSalary(setup: NextCycleSetup): UpcomingBill[] {
+  if (!setup.late) return [];
+  const provisional = planCycle(setup.nextInput, setup.planToday, {
+    carryIn: 0,
+    salaryDate: setup.salaryDate,
+    leave: setup.leave,
+    prepaid: new Map(),
+    leadDecisions: [],
+  });
+  return provisional.upcomingBills.filter((u) => u.dueDate >= setup.payDate && u.dueDate < setup.salaryDate);
+}
+
+export function planCycle(input: PlanInput, today: Date | ISODate, next?: NextCycleOptions, hold?: LateSalaryHold): Plan {
   const todayISO = typeof today === "string" || today instanceof Date ? toIndiaDate(today) : null;
   if (!todayISO) throw new EngineInputError("Today's date is not a valid date, so no plan could be made.");
 
@@ -408,10 +504,30 @@ export function planCycle(input: PlanInput, today: Date | ISODate, next?: NextCy
     }
   }
 
+  // ---- Late next salary: keep spending money back for bills due before it lands -----------
+  // Taken before expenses are drawn, so a logged expense can't use money promised to those bills.
+  if (hold) {
+    const take = Math.min(spending.planned, hold.amount);
+    if (take > 0) {
+      const held = newBucket("hold", "Kept for bills before late salary", "hold", hold.amount);
+      held.planned = take;
+      spending.planned -= take;
+      order.splice(order.indexOf(spending), 0, held);
+    }
+  }
+
   // ---- What was set aside ----------------------------------------------------------
   for (const b of order) {
     let sentence: string;
     if (b.kind === "carry") sentence = `${rs(b.planned)} of this salary covers last month's shortfall.`;
+    else if (b.kind === "hold" && hold) {
+      const names = joinWords([...new Set(hold.bills.map((x) => x.name))]);
+      const dates = joinWords([...new Set(hold.bills.map((x) => fmt(x.dueDate)))]);
+      sentence =
+        b.planned >= b.target
+          ? `Kept ${rs(b.planned)} of this month's spending money for ${names} (due ${dates}), because your salary comes on ${fmt(hold.salaryDate)}.`
+          : `Kept ${rs(b.planned)} of this month's spending money towards the ${rs(b.target)} for ${names} (due ${dates}), because your salary comes on ${fmt(hold.salaryDate)}.`;
+    }
     else if (b.kind === "spending") sentence = `Left ${rs(b.planned)} as spending money until payday on ${fmt(cycle.end)}.`;
     else if (b.kind === "buffer") sentence = `Kept ${rs(b.planned)} as your emergency buffer.`;
     else if (b.kind === "goal") sentence = `Put ${rs(b.planned)} towards your ${b.name} goal.`;
