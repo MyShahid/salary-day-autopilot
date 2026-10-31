@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { addDays, toIndiaDate, type ISODate } from "@/lib/engine/dates";
+import { safeBuildNextSalaryPlan } from "@/lib/engine/next";
 import { safeBuildPlan } from "@/lib/engine/plan";
-import type { EventType, Plan } from "@/lib/engine/types";
+import type { EventType, NextSalaryPlan, Plan } from "@/lib/engine/types";
 import { OTHER_INCOME } from "@/lib/events";
 import { addEventSchema, eventIdSchema, firstErrorMessage } from "@/lib/validation";
 import { fail, unauthorized, type ServiceResult } from "@/lib/service-result";
@@ -31,6 +32,8 @@ export interface HomeData {
   recentEvents: RecentEvent[];
   billNames: string[];
   incomeNames: string[];
+  next: NextSalaryPlan | null;
+  nextError: string | null;
 }
 
 export async function getPlanForUser(): Promise<ServiceResult<HomeData>> {
@@ -51,8 +54,11 @@ export async function getPlanForUser(): Promise<ServiceResult<HomeData>> {
       }),
     ]);
 
-    const result = safeBuildPlan({ profile, bills, incomes, goals, events }, today);
+    const input = { profile, bills, incomes, goals, events };
+    const result = safeBuildPlan(input, today);
     if (!result.ok) return fail(500, result.error);
+    // The next salary card is extra: if it can't be worked out, the rest of the page still shows.
+    const next = safeBuildNextSalaryPlan(input, today);
 
     const recentEvents = [...events]
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -67,6 +73,8 @@ export async function getPlanForUser(): Promise<ServiceResult<HomeData>> {
         recentEvents,
         billNames: bills.map((b) => b.name),
         incomeNames: incomes.map((i) => i.name),
+        next: next.ok ? next.next : null,
+        nextError: next.ok ? null : next.error,
       },
     };
   } catch (err) {
@@ -111,7 +119,7 @@ export async function addEvent(
       storedNote = input.note ?? "Other income";
     }
 
-    const event = await prisma.event.create({
+    const create = prisma.event.create({
       data: {
         userId: user.id,
         type: input.type,
@@ -121,6 +129,14 @@ export async function addEvent(
       },
       select: { id: true },
     });
+    // Leave days and a late date describe the salary that just arrived, so clear them with it.
+    const [event] =
+      input.type === "salary_received"
+        ? await prisma.$transaction([
+            create,
+            prisma.profile.updateMany({ where: { userId: user.id }, data: { unpaidLeaveDays: 0, nextSalaryDate: null } }),
+          ])
+        : [await create];
     return { ok: true, data: event };
   } catch (err) {
     console.error("addEvent failed", err);

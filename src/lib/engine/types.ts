@@ -15,6 +15,10 @@ export interface EngineProfile {
   currentBalance: number;
   /** When currentBalance was true. Bills, salary and events on or before it are already inside the balance. */
   balanceAsOf?: Date | ISODate | null;
+  /** Unpaid leave days taken this month; they come off the next salary. 0-31. */
+  unpaidLeaveDays?: number;
+  /** When the next salary will actually arrive, if later than the normal pay date. */
+  nextSalaryDate?: Date | ISODate | null;
 }
 
 export interface EngineBill {
@@ -78,7 +82,8 @@ export interface PlanInput {
   settings?: EngineSettings;
 }
 
-export type BucketKind = BillKind | "buffer" | "goal" | "spending";
+/** "carry" is last month's shortfall, paid first from the next salary. */
+export type BucketKind = "carry" | BillKind | "buffer" | "goal" | "spending";
 
 export interface Bucket {
   id: string;
@@ -165,4 +170,20 @@ export interface Plan {
    */
   outflows: { total: number; uncovered: number; paidBeyondPlan: number };
   warnings: string[];
+}
+
+export interface NextSalaryPlan {
+  /** The normal pay date that starts the next cycle. */
+  payDate: ISODate;
+  /** When the salary is expected to land: payDate, or nextSalaryDate when it's late. */
+  salaryDate: ISODate;
+  late: boolean;
+  fullSalary: number;
+  unpaidLeaveDays: number;
+  leaveCut: number;
+  /** fullSalary - leaveCut */
+  expectedSalary: number;
+  /** This cycle's buffer left (after paying bills due before a late salary) minus this cycle's shortfall. */
+  carryIn: number;
+  plan: Plan;
 }

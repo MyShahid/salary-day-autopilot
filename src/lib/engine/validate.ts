@@ -55,6 +55,8 @@ export interface CleanInput {
     currentBalance: number;
     /** India date of the balance, plus the exact moment when known. */
     balanceAsOf: { date: ISODate; at: number | null } | null;
+    unpaidLeaveDays: number;
+    nextSalaryDate: ISODate | null;
   };
   bills: CleanBill[];
   incomes: CleanIncome[];
@@ -62,6 +64,8 @@ export interface CleanInput {
   events: CleanEvent[];
   settings: { emergencyBuffer: number; spendingFloor: number; holidays: Holiday[] };
   warnings: string[];
+  /** Problems with the next-salary fields; shown with the next salary plan only. */
+  nextSalaryWarnings: string[];
 }
 
 const BILL_KINDS: readonly string[] = ["rent", "emi", "bill", "card", "yearly", "living"];
@@ -139,6 +143,22 @@ export function cleanInput(raw: unknown): CleanInput {
     const d = date(p.balanceAsOf);
     if (d) balanceAsOf = { date: d, at: instant(p.balanceAsOf) };
     else warnings.push("The date of your balance isn't valid, so it is treated as money from before this salary.");
+  }
+  const nextSalaryWarnings: string[] = [];
+  let unpaidLeaveDays = 0;
+  if (p.unpaidLeaveDays !== undefined && p.unpaidLeaveDays !== null) {
+    const d = p.unpaidLeaveDays;
+    if (typeof d !== "number" || !Number.isFinite(d) || d < 0) {
+      nextSalaryWarnings.push("Unpaid leave days must be a number from 0 to 31, so none were counted.");
+    } else {
+      unpaidLeaveDays = Math.min(31, Math.round(d));
+      if (unpaidLeaveDays !== d) nextSalaryWarnings.push(`Unpaid leave days must be a whole number from 0 to 31. Using ${unpaidLeaveDays}.`);
+    }
+  }
+  let nextSalaryDate: ISODate | null = null;
+  if (p.nextSalaryDate !== undefined && p.nextSalaryDate !== null) {
+    nextSalaryDate = date(p.nextSalaryDate);
+    if (!nextSalaryDate) nextSalaryWarnings.push("The date your next salary arrives isn't valid, so the normal pay date is used.");
   }
 
   const bills: CleanBill[] = [];
@@ -244,12 +264,13 @@ export function cleanInput(raw: unknown): CleanInput {
     : DEFAULT_HOLIDAYS;
 
   return {
-    profile: { salaryAmount, payDay, currentBalance, balanceAsOf },
+    profile: { salaryAmount, payDay, currentBalance, balanceAsOf, unpaidLeaveDays, nextSalaryDate },
     bills,
     incomes,
     goals,
     events,
     settings: { emergencyBuffer, spendingFloor, holidays },
     warnings,
+    nextSalaryWarnings,
   };
 }

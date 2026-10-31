@@ -12,6 +12,7 @@ import {
   saveBillAction,
   saveGoalAction,
   saveIncomeAction,
+  saveNextSalaryAction,
   saveProfileAction,
 } from "@/app/actions/settings";
 import { ActionForm } from "@/components/settings/ActionForm";
@@ -208,6 +209,40 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <ActionForm action={saveProfileAction}>
             <Money name="salaryAmount" label="Monthly salary (₹)" defaultValue={profile?.salaryAmount ?? 0} />
             <Day name="payDay" label="Pay day" defaultValue={profile?.payDay ?? 1} />
+          </ActionForm>
+        </div>
+      </Section>
+
+      <Section title="Next salary">
+        <div className="rounded-lg bg-white p-3 shadow-sm">
+          <ActionForm action={saveNextSalaryAction}>
+            <Field
+              label="Unpaid leave days this month"
+              hint="Each day takes 1/30 of your salary off the next payment. Leave at 0 if you had none."
+            >
+              <input
+                name="unpaidLeaveDays"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={31}
+                defaultValue={profile?.unpaidLeaveDays ?? 0}
+                className={inputClass}
+              />
+            </Field>
+            <Field
+              label="Salary arriving late? Date it will come"
+              hint="Leave blank if it's on time. Bills due before it get paid from this month's spare money."
+            >
+              <input
+                name="nextSalaryDate"
+                type="date"
+                min={today}
+                defaultValue={profile?.nextSalaryDate ? toIndiaDate(profile.nextSalaryDate) ?? "" : ""}
+                className={inputClass}
+              />
+            </Field>
+            <p className="text-xs text-slate-500">Both reset by themselves once you log that salary as arrived.</p>
           </ActionForm>
         </div>
       </Section>

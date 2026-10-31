@@ -87,6 +87,22 @@ export const profileSchema = z.object({
   payDay: wholeNumberField("Pay day", 1, 31),
 });
 
+/** Unpaid leave and a late salary date for the next salary. A blank date means "on time". */
+export function nextSalarySchema(today: ISODate) {
+  const latest = addDays(today, 62);
+  return z.object({
+    unpaidLeaveDays: wholeNumberField("Unpaid leave days", 0, 31),
+    nextSalaryDate: z
+      .string()
+      .trim()
+      .nullish()
+      .transform((v) => v || null)
+      .refine((d) => d === null || parseISODate(d) !== null, "Please choose a valid date, or leave it blank if your salary is on time.")
+      .refine((d) => d === null || d >= today, "The date your salary arrives can't be in the past.")
+      .refine((d) => d === null || d <= latest, "That date is too far away. Choose a date in the next two months."),
+  });
+}
+
 export const balanceSchema = z.object({
   currentBalance: rupeesField("The money in your account", { allowZero: true }),
 });

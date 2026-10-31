@@ -30,8 +30,8 @@ export class EngineInputError extends Error {
 }
 
 // Funding order, top to bottom. Shortages are cut from the bottom up.
-const KIND_ORDER: readonly BucketKind[] = ["rent", "emi", "bill", "card", "yearly", "living", "buffer", "goal", "spending"];
-const NEED_KINDS: ReadonlySet<BucketKind> = new Set(["rent", "emi", "bill", "card", "yearly", "living"]);
+const KIND_ORDER: readonly BucketKind[] = ["carry", "rent", "emi", "bill", "card", "yearly", "living", "buffer", "goal", "spending"];
+const NEED_KINDS: ReadonlySet<BucketKind> = new Set(["carry", "rent", "emi", "bill", "card", "yearly", "living"]);
 
 interface Work extends Bucket {
   priority: number;
@@ -40,6 +40,7 @@ interface Work extends Bucket {
   yearly?: { nextDue: ISODate; monthsLeft: number; remaining: number; dueThisCycle: boolean };
   goal?: { remaining: number; monthsLeft: number; neededPerMonth: number };
   livingDays?: number; // set when a budget only covers the days after a mid-cycle balance
+  prepaid: number; // paid from the previous cycle before a late salary
 }
 
 const normalise = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -68,10 +69,28 @@ function joinWords(items: string[]): string {
 }
 
 function newBucket(id: string, name: string, kind: BucketKind, target: number, priority = 0): Work {
-  return { id, name, kind, target, planned: 0, spent: 0, left: 0, dueDates: [], priority, unitAmount: 0, paid: 0 };
+  return { id, name, kind, target, planned: 0, spent: 0, left: 0, dueDates: [], priority, unitAmount: 0, paid: 0, prepaid: 0 };
+}
+
+/** Overrides used by buildNextSalaryPlan to plan the coming cycle instead of this one. */
+export interface NextCycleOptions {
+  /** This cycle's buffer left minus its shortfall. Negative is paid first from the salary. */
+  carryIn: number;
+  /** When the salary lands (later than the pay date if it's late). */
+  salaryDate: ISODate;
+  /** Unpaid leave taken off the salary, cut from the bottom up like a short salary. */
+  leave: { days: number; cut: number } | null;
+  /** Bucket id -> amount already paid from this cycle's money (bills due before a late salary). */
+  prepaid: ReadonlyMap<string, number>;
+  /** Decisions made before the salary arrives, shown right after the carry-in. */
+  leadDecisions: Decision[];
 }
 
 export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
+  return planCycle(input, today);
+}
+
+export function planCycle(input: PlanInput, today: Date | ISODate, next?: NextCycleOptions): Plan {
   const todayISO = typeof today === "string" || today instanceof Date ? toIndiaDate(today) : null;
   if (!todayISO) throw new EngineInputError("Today's date is not a valid date, so no plan could be made.");
 
@@ -96,7 +115,10 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
   // A balance taken inside this cycle already includes this cycle's salary and every bill and
   // event before it, so the plan only looks at what happens after it. A balance from before this
   // cycle is out of date and is left out rather than guessed forward.
-  const balance = profile.balanceAsOf
+  // The next cycle starts from the carry-in, not from a balance.
+  const balance = next
+    ? null
+    : profile.balanceAsOf
     ? profile.balanceAsOf.date > todayISO
       ? { date: todayISO, at: null }
       : profile.balanceAsOf
@@ -139,8 +161,11 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
   const cycleEvents = events.filter(counted);
 
   // ---- Money in --------------------------------------------------------------
-  const openingBalance = staleBalance ? 0 : profile.currentBalance;
-  if (staleBalance) {
+  const openingBalance = next ? Math.max(0, next.carryIn) : staleBalance ? 0 : profile.currentBalance;
+  if (next) {
+    decide(incomeDecisions, "count_income", openingBalance, "balance", "available",
+      `Carried over the ${rs(openingBalance)} left in this month's emergency buffer.`);
+  } else if (staleBalance) {
     warnings.push(
       `Your balance of ${rs(profile.currentBalance)} is from ${fmt(balance!.date)}, before this pay cycle, so it wasn't counted. Update "Money in your account right now" in My details.`,
     );
@@ -156,14 +181,22 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
   const salaryReceived = salaryEvents.length > 0;
   // This cycle's pay date is its start, so a balance taken inside the cycle already holds the salary.
   const salaryInBalance = anchor !== null;
-  const salary = salaryReceived ? sum(salaryEvents) : salaryInBalance ? 0 : profile.salaryAmount;
-  const salaryGap = salaryReceived && !salaryInBalance ? Math.max(0, profile.salaryAmount - salary) : 0;
+  const leave = next?.leave && next.leave.cut > 0 ? next.leave : null;
+  const salary = next
+    ? profile.salaryAmount - (leave?.cut ?? 0)
+    : salaryReceived ? sum(salaryEvents) : salaryInBalance ? 0 : profile.salaryAmount;
+  const salaryGap = next
+    ? leave?.cut ?? 0
+    : salaryReceived && !salaryInBalance ? Math.max(0, profile.salaryAmount - salary) : 0;
+  const leaveWords = leave ? `${leave.days} unpaid leave day${leave.days === 1 ? "" : "s"}` : "";
   if (salaryInBalance) {
     decide(incomeDecisions, "skip_income", profile.salaryAmount, "salary", "none",
       `Did not add your ${rs(profile.salaryAmount)} salary from ${fmt(cycle.start)} again: it is already in the balance you entered on ${fmt(anchor!)}.`);
   }
   decide(incomeDecisions, "count_income", salary, "salary", "available",
-    salaryReceived
+    next
+      ? `Counted your ${rs(salary)} salary, due on ${fmt(next.salaryDate)}${leave ? ` (${rs(profile.salaryAmount)} minus ${rs(leave.cut)} for ${leaveWords})` : ""}.`
+      : salaryReceived
       ? `Counted the ${rs(salary)} salary you received${salaryGap > 0 ? `, ${rs(salaryGap)} less than your usual ${rs(profile.salaryAmount)}` : ""}.`
       : `Counted your ${rs(salary)} salary, due on ${fmt(cycle.start)}.`);
 
@@ -269,6 +302,9 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
       b.dueDates = occurrences(bill.dueDay);
       b.target = bill.amount * b.dueDates.length;
     }
+    // Paid from last cycle's money before a late salary: this salary doesn't need to cover it.
+    b.prepaid = Math.min(next?.prepaid.get(b.id) ?? 0, b.target);
+    b.target -= b.prepaid;
     // A bill you've actually paid needed at least that much.
     b.target = Math.max(b.target, b.paid);
     billBuckets.push(b);
@@ -298,7 +334,9 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
     });
 
   const spending = newBucket("spending", "Spending money", "spending", settings.spendingFloor);
-  const order: Work[] = [...billBuckets, buffer, ...goalBuckets, spending];
+  // Last month's shortfall is money already owed, so it comes before everything else.
+  const carry = next && next.carryIn < 0 ? newBucket("carry", "Last month's shortfall", "carry", -next.carryIn) : null;
+  const order: Work[] = [...(carry ? [carry] : []), ...billBuckets, buffer, ...goalBuckets, spending];
   const isNeed = (b: Work) => NEED_KINDS.has(b.kind);
 
   // ---- Allocate the full-salary baseline, top down -------------------------------
@@ -319,7 +357,7 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
 
   // ---- Salary came in short: cut from the bottom up -----------------------------------
   if (salaryGap > 0) {
-    const reason = `because your salary was ${rs(salaryGap)} short`;
+    const reason = leave ? `because of ${leaveWords}` : `because your salary was ${rs(salaryGap)} short`;
     const protects = order.filter((b) => b.planned > 0).map((b) => ({ b, amount: b.planned }));
     const cuts: { b: Work; amount: number }[] = [];
     let toCut = salaryGap;
@@ -354,12 +392,27 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
       decide(cutDecisions, isNeed(b) ? "shortfall" : "cut", amount, b.id, "none",
         isNeed(b) ? `Could not set aside ${rs(amount)} for ${label(b)} ${reason}.` : `Cut ${rs(amount)} from ${label(b)} ${reason}.`);
     }
+    // Unpaid leave opens with one summary line for the first (lowest-priority) cut.
+    const first = cuts[0];
+    if (leave && first && !unfunded.has(first.b)) {
+      for (let k = cutDecisions.length - 1; k >= 0; k--) {
+        if (cutDecisions[k].kind === "cut" && cutDecisions[k].from === first.b.id) cutDecisions.splice(k, 1);
+      }
+      cutDecisions.unshift({
+        kind: "cut",
+        amount: first.amount,
+        from: first.b.id,
+        to: "salary",
+        sentence: `Your salary will be ${rs(leave.cut)} less because of ${leaveWords}, so I cut ${rs(first.amount)} from ${label(first.b)} first.`,
+      });
+    }
   }
 
   // ---- What was set aside ----------------------------------------------------------
   for (const b of order) {
     let sentence: string;
-    if (b.kind === "spending") sentence = `Left ${rs(b.planned)} as spending money until payday on ${fmt(cycle.end)}.`;
+    if (b.kind === "carry") sentence = `${rs(b.planned)} of this salary covers last month's shortfall.`;
+    else if (b.kind === "spending") sentence = `Left ${rs(b.planned)} as spending money until payday on ${fmt(cycle.end)}.`;
     else if (b.kind === "buffer") sentence = `Kept ${rs(b.planned)} as your emergency buffer.`;
     else if (b.kind === "goal") sentence = `Put ${rs(b.planned)} towards your ${b.name} goal.`;
     else if (b.kind === "living") {
@@ -449,7 +502,7 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
       if (due && owed > 0) upcomingBills.push({ billId: b.id, name: b.name, amount: owed, dueDate: due, reserved, overdue: due < todayISO });
       continue;
     }
-    let paidLeft = b.paid;
+    let paidLeft = b.paid + b.prepaid;
     for (const due of b.dueDates) {
       const each = b.yearly ? b.target : b.unitAmount;
       const covered = Math.min(paidLeft, each);
@@ -528,7 +581,15 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
     })),
     upcomingBills,
     goalStatus,
-    decisions: [...incomeDecisions, ...reserveDecisions, ...cutDecisions, ...spendDecisions],
+    // For the next salary, covering last month's shortfall is the first thing that happens.
+    decisions: [
+      ...reserveDecisions.filter((d) => d.to === "carry"),
+      ...(next?.leadDecisions ?? []),
+      ...incomeDecisions,
+      ...reserveDecisions.filter((d) => d.to !== "carry"),
+      ...cutDecisions,
+      ...spendDecisions,
+    ],
     shortfall,
     shortfallParts: { unfundedNeeds, uncoveredSpending: uncovered },
     outflows: { total: outflowsTotal, uncovered, paidBeyondPlan },

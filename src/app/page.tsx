@@ -9,6 +9,7 @@ import { formatDayDate } from "@/lib/format-ui";
 import { getPlanForUser } from "@/lib/plan-service";
 import { LogEventForm } from "@/components/home/LogEventForm";
 import { UndoButton } from "@/components/home/UndoButton";
+import { NextSalaryCard } from "@/components/home/NextSalaryCard";
 
 const STATUS_STYLE: Record<Plan["status"], string> = {
   okay: "border-emerald-300 bg-emerald-50 text-emerald-950",
@@ -57,7 +58,7 @@ export default async function HomePage() {
     );
   }
 
-  const { plan, today, recentEvents, billNames, incomeNames } = result.data;
+  const { plan, today, recentEvents, billNames, incomeNames, next, nextError } = result.data;
   const fmtDate = (d: string) => formatDayDate(d, today);
   const shortfallWarnings = plan.warnings.filter(
     (w) => w.includes("more than your spare money") || w.includes(" short before payday"),
@@ -175,6 +176,12 @@ export default async function HomePage() {
           </ol>
         </details>
       </Section>
+
+      {next ? (
+        <NextSalaryCard next={next} today={today} />
+      ) : (
+        <p className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">{nextError}</p>
+      )}
 
       <Footer email={user.email} />
     </div>

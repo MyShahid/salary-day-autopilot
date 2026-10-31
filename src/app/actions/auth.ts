@@ -3,7 +3,7 @@
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { hashPassword, needsRehash, verifyPassword } from "@/lib/auth/password";
 import { createSession, deleteSession } from "@/lib/auth/session";
 import { buildSampleData } from "@/lib/sample-data";
 import { firstErrorMessage, loginSchema, signupSchema } from "@/lib/validation";
@@ -64,6 +64,14 @@ export async function login(_prev: AuthFormState, formData: FormData): Promise<A
     const ok = await verifyPassword(password, user?.passwordHash);
     if (!user || !ok) {
       return { error: "Email or password is incorrect.", email };
+    }
+    // Older accounts were hashed at a higher cost; upgrade quietly so the next login is fast too.
+    if (needsRehash(user.passwordHash)) {
+      try {
+        await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
+      } catch (err) {
+        console.error("password rehash failed", err);
+      }
     }
     await createSession(user.id);
   } catch (err) {

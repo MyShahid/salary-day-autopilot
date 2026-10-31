@@ -44,11 +44,13 @@ model User {
 }
 
 model Profile {
-  userId         String @id
-  salaryAmount   Int
-  payDay         Int
-  currentBalance Int // money in the account at balanceAsOf
-  balanceAsOf    DateTime @default(now()) // exact moment, so same-day events can be ordered around it
+  userId          String    @id
+  salaryAmount    Int
+  payDay          Int
+  currentBalance  Int // money in the account at balanceAsOf
+  balanceAsOf     DateTime  @default(now()) // exact moment, so same-day events can be ordered around it
+  unpaidLeaveDays Int       @default(0) // 0-31, taken off the next salary
+  nextSalaryDate  DateTime? @db.Date // set only when the next salary will arrive late
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

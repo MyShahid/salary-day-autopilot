@@ -10,6 +10,7 @@ import {
   goalSchema,
   incomeSchema,
   itemIdSchema,
+  nextSalarySchema,
   profileSchema,
 } from "@/lib/validation";
 
@@ -60,6 +61,24 @@ export function updateProfile(input: unknown): Ok<{ saved: true }> {
       where: { userId },
       update: parsed.data,
       create: { userId, ...parsed.data, currentBalance: 0 },
+    });
+    return { ok: true, data: { saved: true } };
+  });
+}
+
+/** Unpaid leave days and a late salary date. Both reset once a salary is logged as received. */
+export function updateNextSalary(input: unknown): Ok<{ saved: true }> {
+  return asUser(async (userId) => {
+    const parsed = nextSalarySchema(todayInIndia()).safeParse(input ?? {});
+    if (!parsed.success) return fail(400, firstErrorMessage(parsed.error));
+    const data = {
+      unpaidLeaveDays: parsed.data.unpaidLeaveDays,
+      nextSalaryDate: parsed.data.nextSalaryDate ? new Date(`${parsed.data.nextSalaryDate}T00:00:00Z`) : null,
+    };
+    await prisma.profile.upsert({
+      where: { userId },
+      update: data,
+      create: { userId, salaryAmount: 0, payDay: 1, currentBalance: 0, ...data },
     });
     return { ok: true, data: { saved: true } };
   });

@@ -1,6 +1,6 @@
 import type { BucketKind, Plan } from "./types";
 
-const NEED_KINDS: ReadonlySet<BucketKind> = new Set(["rent", "emi", "bill", "card", "yearly", "living"]);
+const NEED_KINDS: ReadonlySet<BucketKind> = new Set(["carry", "rent", "emi", "bill", "card", "yearly", "living"]);
 
 /**
  * Throws if the plan's numbers don't add up. Checks:
