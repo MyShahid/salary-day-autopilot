@@ -1,5 +1,6 @@
 import {
   actualPayDate,
+  addDays,
   addMonths,
   clampDueDate,
   daysBetween,
@@ -38,6 +39,7 @@ interface Work extends Bucket {
   paid: number; // bill_paid this cycle
   yearly?: { nextDue: ISODate; monthsLeft: number; remaining: number; dueThisCycle: boolean };
   goal?: { remaining: number; monthsLeft: number; neededPerMonth: number };
+  livingDays?: number; // set when a budget only covers the days after a mid-cycle balance
 }
 
 const normalise = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -90,8 +92,25 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
   const cycle = payCycle(todayISO, profile.payDay, settings.holidays);
   const inCycle = (d: ISODate) => d >= cycle.start && d < cycle.end;
 
-  /** Due dates for a day-of-month that fall inside this cycle. */
-  const occurrences = (day: number): ISODate[] => {
+  // ---- Starting point -----------------------------------------------------------
+  // A balance taken inside this cycle already includes this cycle's salary and every bill and
+  // event before it, so the plan only looks at what happens after it. A balance from before this
+  // cycle is out of date and is left out rather than guessed forward.
+  const balance = profile.balanceAsOf
+    ? profile.balanceAsOf.date > todayISO
+      ? { date: todayISO, at: null }
+      : profile.balanceAsOf
+    : null;
+  const anchor = balance && balance.date >= cycle.start ? balance.date : null;
+  const staleBalance = balance !== null && anchor === null;
+  const afterBalance = (e: CleanEvent) =>
+    anchor === null ||
+    e.date > anchor ||
+    (e.date === anchor && (balance!.at === null || e.createdAt === null || e.createdAt > balance!.at));
+  const counted = (e: CleanEvent) => inCycle(e.date) && afterBalance(e);
+
+  /** Due dates for a day-of-month inside this cycle, split into after the balance and on/before it. */
+  const allOccurrences = (day: number): ISODate[] => {
     const out: ISODate[] = [];
     const startYm = yearMonthOf(cycle.start);
     for (let k = 0; k < 3; k++) {
@@ -101,6 +120,8 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
     }
     return out;
   };
+  const occurrences = (day: number) => allOccurrences(day).filter((d) => anchor === null || d > anchor);
+  const coveredByBalance = (day: number) => allOccurrences(day).filter((d) => anchor !== null && d <= anchor);
 
   /** Paydays from this cycle's onwards that land before `limit` (or on it, if inclusive). This cycle counts as 1. */
   const paydaysUntil = (limit: ISODate, inclusive: boolean): number => {
@@ -115,18 +136,32 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
   };
 
   const events = [...clean.events].sort(byTime);
-  const cycleEvents = events.filter((e) => inCycle(e.date));
+  const cycleEvents = events.filter(counted);
 
   // ---- Money in --------------------------------------------------------------
-  if (profile.currentBalance > 0) {
-    decide(incomeDecisions, "count_income", profile.currentBalance, "balance", "available",
-      `Counted the ${rs(profile.currentBalance)} you already had in your account.`);
+  const openingBalance = staleBalance ? 0 : profile.currentBalance;
+  if (staleBalance) {
+    warnings.push(
+      `Your balance of ${rs(profile.currentBalance)} is from ${fmt(balance!.date)}, before this pay cycle, so it wasn't counted. Update "Money in your account right now" in My details.`,
+    );
+  } else if (anchor) {
+    decide(incomeDecisions, "count_income", openingBalance, "balance", "available",
+      `Counted the ${rs(openingBalance)} in your account on ${fmt(anchor)}.`);
+  } else {
+    decide(incomeDecisions, "count_income", openingBalance, "balance", "available",
+      `Counted the ${rs(openingBalance)} you already had in your account.`);
   }
 
   const salaryEvents = cycleEvents.filter((e) => e.type === "salary_received");
   const salaryReceived = salaryEvents.length > 0;
-  const salary = salaryReceived ? sum(salaryEvents) : profile.salaryAmount;
-  const salaryGap = salaryReceived ? Math.max(0, profile.salaryAmount - salary) : 0;
+  // This cycle's pay date is its start, so a balance taken inside the cycle already holds the salary.
+  const salaryInBalance = anchor !== null;
+  const salary = salaryReceived ? sum(salaryEvents) : salaryInBalance ? 0 : profile.salaryAmount;
+  const salaryGap = salaryReceived && !salaryInBalance ? Math.max(0, profile.salaryAmount - salary) : 0;
+  if (salaryInBalance) {
+    decide(incomeDecisions, "skip_income", profile.salaryAmount, "salary", "none",
+      `Did not add your ${rs(profile.salaryAmount)} salary from ${fmt(cycle.start)} again: it is already in the balance you entered on ${fmt(anchor!)}.`);
+  }
   decide(incomeDecisions, "count_income", salary, "salary", "available",
     salaryReceived
       ? `Counted the ${rs(salary)} salary you received${salaryGap > 0 ? `, ${rs(salaryGap)} less than your usual ${rs(profile.salaryAmount)}` : ""}.`
@@ -161,7 +196,7 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
       `Counted ${rs(e.amount)}${e.note ? ` from ${e.note}` : ""} that you received on ${fmt(e.date)}.`);
   }
 
-  const available = profile.currentBalance + salary + income;
+  const available = openingBalance + salary + income;
   // What the plan would have had with the full salary. The difference is cut from the bottom up.
   const baseline = available + salaryGap;
 
@@ -181,14 +216,27 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
     b.unitAmount = bill.amount;
     b.paid = sum(payments);
 
+    const alreadyPaid = (dates: ISODate[]) => {
+      for (const d of dates) {
+        decide(incomeDecisions, "already_paid", bill.amount, b.id, "none",
+          `Treated ${bill.name} (${rs(bill.amount)}, due ${fmt(d)}) as already paid, because it was due before you entered your balance on ${fmt(anchor!)}.`);
+      }
+    };
+
     if (kind === "yearly") {
       const dueMonth = bill.dueMonth ?? 1;
-      const { year } = yearMonthOf(cycle.start);
+      // Due on or before the balance date counts as paid, so look for the next one after it.
+      const from = anchor ? addDays(anchor, 1) : cycle.start;
+      const { year } = yearMonthOf(from);
       let nextDue = clampDueDate(year, dueMonth, bill.dueDay);
-      if (nextDue < cycle.start) nextDue = clampDueDate(year + 1, dueMonth, bill.dueDay);
+      if (nextDue < from) nextDue = clampDueDate(year + 1, dueMonth, bill.dueDay);
       const prevDue = clampDueDate(yearMonthOf(nextDue).year - 1, dueMonth, bill.dueDay);
+      if (anchor && prevDue >= cycle.start) alreadyPaid([prevDue]);
+      // Payments not counted as this cycle's spending (before the cycle, or inside the balance) still reduce what's owed.
       const paidEarlier = sum(
-        events.filter((e) => e.type === "bill_paid" && sameName(e.note, bill.name) && e.date > prevDue && e.date < cycle.start),
+        events.filter(
+          (e) => e.type === "bill_paid" && sameName(e.note, bill.name) && e.date > prevDue && e.date < cycle.end && !counted(e),
+        ),
       );
       const remaining = Math.max(0, bill.amount - bill.setAsideSoFar - paidEarlier);
       const dueThisCycle = nextDue < cycle.end;
@@ -197,16 +245,27 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
       b.dueDates = dueThisCycle ? [nextDue] : [];
       b.yearly = { nextDue, monthsLeft, remaining, dueThisCycle };
     } else if (kind === "living") {
-      b.target = bill.amount; // a budget for the whole cycle, not a dated payment
+      // A budget for the whole cycle, not a dated payment. From a mid-cycle balance, only the days left need it.
+      if (anchor) {
+        b.livingDays = daysBetween(anchor, cycle.end);
+        b.target = Math.ceil((bill.amount * b.livingDays) / daysBetween(cycle.start, cycle.end));
+      } else b.target = bill.amount;
     } else if (kind === "card") {
       b.dueDates = occurrences(bill.dueDay);
       if (bill === cardBills[0]) {
         const allPayments = events.filter((e) => e.type === "bill_paid" && sameName(e.note, bill.name));
         const last = allPayments[allPayments.length - 1];
-        const unpaidSpends = sum(events.filter((e) => e.type === "card_spend" && (!last || byTime(e, last) > 0)));
+        // A card due date on or before the balance counts as paid; card spends are still owed whenever they happened.
+        const impliedPaidOn = coveredByBalance(bill.dueDay).at(-1);
+        const unpaidSpends = sum(
+          events.filter(
+            (e) => e.type === "card_spend" && (!last || byTime(e, last) > 0) && (!impliedPaidOn || e.date > impliedPaidOn),
+          ),
+        );
         b.target = b.paid + unpaidSpends;
       }
     } else {
+      alreadyPaid(coveredByBalance(bill.dueDay));
       b.dueDates = occurrences(bill.dueDay);
       b.target = bill.amount * b.dueDates.length;
     }
@@ -303,7 +362,11 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
     if (b.kind === "spending") sentence = `Left ${rs(b.planned)} as spending money until payday on ${fmt(cycle.end)}.`;
     else if (b.kind === "buffer") sentence = `Kept ${rs(b.planned)} as your emergency buffer.`;
     else if (b.kind === "goal") sentence = `Put ${rs(b.planned)} towards your ${b.name} goal.`;
-    else if (b.kind === "living") sentence = `Set aside ${rs(b.planned)} for ${b.name}.`;
+    else if (b.kind === "living") {
+      sentence = b.livingDays
+        ? `Set aside ${rs(b.planned)} for ${b.name} for the ${b.livingDays} days until payday.`
+        : `Set aside ${rs(b.planned)} for ${b.name}.`;
+    }
     else if (b.kind === "card") {
       sentence = `Set aside ${rs(b.planned)} for your ${b.name} bill${b.dueDates.length ? `, due ${fmt(b.dueDates[0])},` : ""} to cover your card spends.`;
     } else if (b.yearly && !b.yearly.dueThisCycle) {
@@ -366,6 +429,12 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
   // ---- Summary --------------------------------------------------------------------
   const unfundedNeeds = order.filter(isNeed).reduce((t, b) => t + (b.target - b.planned), 0);
   const shortfall = unfundedNeeds + uncovered;
+  if (unfundedNeeds > 0) {
+    const names = order.filter((b) => isNeed(b) && b.planned < b.target).map((b) => b.name);
+    warnings.push(
+      `You're ${rs(unfundedNeeds)} short before payday on ${fmt(cycle.end)}: ${joinWords(names)} ${names.length > 1 ? "aren't" : "isn't"} fully covered.`,
+    );
+  }
   const daysLeft = Math.max(1, daysBetween(todayISO, cycle.end));
   const safeToSpendToday = Math.max(0, Math.floor(spending.left / daysLeft));
 
@@ -440,7 +509,9 @@ export function buildPlan(input: PlanInput, today: Date | ISODate): Plan {
     today: todayISO,
     cycle: { start: cycle.start, end: cycle.end, daysLeft },
     money: {
-      openingBalance: profile.currentBalance,
+      openingBalance,
+      balanceAsOf: balance?.date ?? null,
+      salaryInBalance,
       salary,
       salaryExpected: profile.salaryAmount,
       salaryReceived,

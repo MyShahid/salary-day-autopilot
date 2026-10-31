@@ -43,11 +43,19 @@ export interface CleanEvent {
   amount: number;
   note: string;
   date: ISODate;
+  /** Milliseconds since epoch, when known. */
+  createdAt: number | null;
   order: number;
 }
 
 export interface CleanInput {
-  profile: { salaryAmount: number; payDay: number; currentBalance: number };
+  profile: {
+    salaryAmount: number;
+    payDay: number;
+    currentBalance: number;
+    /** India date of the balance, plus the exact moment when known. */
+    balanceAsOf: { date: ISODate; at: number | null } | null;
+  };
   bills: CleanBill[];
   incomes: CleanIncome[];
   goals: CleanGoal[];
@@ -106,6 +114,14 @@ function date(value: unknown): ISODate | null {
   return typeof value === "string" || value instanceof Date ? toIndiaDate(value) : null;
 }
 
+/** Exact moment of a Date or date-time string; null for a plain "YYYY-MM-DD" or anything unreadable. */
+function instant(value: unknown): number | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+  if (typeof value !== "string" || /^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 export function cleanInput(raw: unknown): CleanInput {
   const warnings: string[] = [];
   const input: Obj = isObj(raw) ? raw : {};
@@ -118,6 +134,12 @@ export function cleanInput(raw: unknown): CleanInput {
   }
   const payDay = dayOfMonth(p.payDay, "Your pay day", 1, warnings);
   const currentBalance = money(p.currentBalance, "Your current balance", warnings) ?? 0;
+  let balanceAsOf: CleanInput["profile"]["balanceAsOf"] = null;
+  if (p.balanceAsOf !== undefined && p.balanceAsOf !== null) {
+    const d = date(p.balanceAsOf);
+    if (d) balanceAsOf = { date: d, at: instant(p.balanceAsOf) };
+    else warnings.push("The date of your balance isn't valid, so it is treated as money from before this salary.");
+  }
 
   const bills: CleanBill[] = [];
   list(input.bills, "Bills", warnings).forEach((b, i) => {
@@ -198,7 +220,14 @@ export function cleanInput(raw: unknown): CleanInput {
     const d = date(e.date);
     if (amount === null) return warnings.push(`Entry ${i + 1} in your log was skipped.`);
     if (!d) return warnings.push(`Entry ${i + 1} in your log has no valid date and was skipped.`);
-    events.push({ type: e.type as EventType, amount, note: typeof e.note === "string" ? e.note.trim() : "", date: d, order: i });
+    events.push({
+      type: e.type as EventType,
+      amount,
+      note: typeof e.note === "string" ? e.note.trim() : "",
+      date: d,
+      createdAt: instant(e.createdAt),
+      order: i,
+    });
   });
 
   const s: Obj = isObj(input.settings) ? input.settings : {};
@@ -215,7 +244,7 @@ export function cleanInput(raw: unknown): CleanInput {
     : DEFAULT_HOLIDAYS;
 
   return {
-    profile: { salaryAmount, payDay, currentBalance },
+    profile: { salaryAmount, payDay, currentBalance, balanceAsOf },
     bills,
     incomes,
     goals,

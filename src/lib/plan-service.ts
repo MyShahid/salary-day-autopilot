@@ -5,15 +5,12 @@ import { safeBuildPlan } from "@/lib/engine/plan";
 import type { EventType, Plan } from "@/lib/engine/types";
 import { OTHER_INCOME } from "@/lib/events";
 import { addEventSchema, eventIdSchema, firstErrorMessage } from "@/lib/validation";
+import { fail, unauthorized, type ServiceResult } from "@/lib/service-result";
 
 // Every function here takes the user from the session cookie only and scopes
-// every query by that user's id. Results carry an HTTP-style status so API
-// routes and server actions can share them.
+// every query by that user's id.
 
-export type ServiceResult<T> = { ok: true; data: T } | { ok: false; status: 400 | 401 | 404 | 500; error: string };
-
-const unauthorized = { ok: false, status: 401, error: "You need to log in first." } as const;
-const fail = (status: 400 | 404 | 500, error: string) => ({ ok: false, status, error }) as const;
+export type { ServiceResult };
 
 export const todayInIndia = (): ISODate => toIndiaDate(new Date())!;
 

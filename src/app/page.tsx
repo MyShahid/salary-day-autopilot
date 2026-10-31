@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { logout } from "@/app/actions/auth";
@@ -58,11 +59,19 @@ export default async function HomePage() {
 
   const { plan, today, recentEvents, billNames, incomeNames } = result.data;
   const fmtDate = (d: string) => formatDayDate(d, today);
-  const shortfallWarnings = plan.warnings.filter((w) => w.includes("more than your spare money"));
+  const shortfallWarnings = plan.warnings.filter(
+    (w) => w.includes("more than your spare money") || w.includes(" short before payday"),
+  );
   const otherWarnings = plan.warnings.filter((w) => !shortfallWarnings.includes(w));
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Link href="/settings" className="text-sm font-medium underline">
+          My details
+        </Link>
+      </div>
+
       <div className={`rounded-xl border p-4 ${STATUS_STYLE[plan.status]}`}>
         <p className="text-lg font-semibold">{plan.headline}</p>
         <p className="mt-3 text-sm">Safe to spend today</p>

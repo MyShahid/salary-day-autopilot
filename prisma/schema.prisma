@@ -47,7 +47,8 @@ model Profile {
   userId         String @id
   salaryAmount   Int
   payDay         Int
-  currentBalance Int
+  currentBalance Int // money in the account at balanceAsOf
+  balanceAsOf    DateTime @default(now()) // exact moment, so same-day events can be ordered around it
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -8,8 +8,13 @@ export type BillKind = "rent" | "emi" | "bill" | "card" | "yearly" | "living";
 export interface EngineProfile {
   salaryAmount: number;
   payDay: number;
-  /** Money carried into this pay cycle, before this cycle's salary. */
+  /**
+   * Money in the account on balanceAsOf. Without balanceAsOf it is treated as the
+   * money carried into this pay cycle, before this cycle's salary.
+   */
   currentBalance: number;
+  /** When currentBalance was true. Bills, salary and events on or before it are already inside the balance. */
+  balanceAsOf?: Date | ISODate | null;
 }
 
 export interface EngineBill {
@@ -53,6 +58,8 @@ export interface EngineEvent {
   /** For bill_paid and income_received: the bill or income name it belongs to. */
   note?: string | null;
   date: Date | ISODate;
+  /** When it was logged. Separates same-day events from a balance entered that day. */
+  createdAt?: Date | string | null;
 }
 
 export interface EngineSettings {
@@ -86,7 +93,7 @@ export interface Bucket {
   dueDates: ISODate[];
 }
 
-export type DecisionKind = "count_income" | "skip_income" | "reserve" | "cut" | "cover_expense" | "shortfall";
+export type DecisionKind = "count_income" | "skip_income" | "already_paid" | "reserve" | "cut" | "cover_expense" | "shortfall";
 
 export interface Decision {
   kind: DecisionKind;
@@ -128,7 +135,12 @@ export interface Plan {
   today: ISODate;
   cycle: { start: ISODate; end: ISODate; daysLeft: number };
   money: {
+    /** The balance counted: currentBalance, or 0 when it is from before this cycle. */
     openingBalance: number;
+    /** The India date the balance was taken, if one was given. */
+    balanceAsOf: ISODate | null;
+    /** True when this cycle's salary was paid on or before balanceAsOf, so it is already in the balance. */
+    salaryInBalance: boolean;
     salary: number;
     salaryExpected: number;
     salaryReceived: boolean;

@@ -42,7 +42,8 @@ export async function signup(_prev: AuthFormState, formData: FormData): Promise<
   }
 
   // redirect() throws, so it must stay outside the try block.
-  redirect("/");
+  // New users start on My details to replace the sample numbers with their own.
+  redirect("/settings?welcome=1");
 }
 
 export async function login(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
